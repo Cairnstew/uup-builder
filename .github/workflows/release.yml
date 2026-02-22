@@ -52,7 +52,7 @@ jobs:
           nix develop --command pip install \
             --index-url https://test.pypi.org/simple/ \
             --extra-index-url https://pypi.org/simple/ \
-            uup-builder-py==$TAG_VERSION
+            uup-builder==$TAG_VERSION
           nix develop --command python -c "import uup_builder; print('✅ Import successful')"
 
       - name: Upload to PyPI
