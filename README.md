@@ -1,10 +1,10 @@
-# uup-builder-py
+# uup-builder
 
 A Python package for creating and customizing Windows ISO files using the [Unified Update Platform (UUP)](https://learn.microsoft.com/en-us/windows/deployment/update/windows-update-overview).
 
 ## Overview
 
-`uup-builder-py` provides a programmatic interface to download Windows update packages from Microsoft's Unified Update Platform and convert them into bootable ISO files. It allows you to select specific Windows editions, languages, and components, giving you full control over the resulting image.
+`uup-builder` provides a programmatic interface to download Windows update packages from Microsoft's Unified Update Platform and convert them into bootable ISO files. It allows you to select specific Windows editions, languages, and components, giving you full control over the resulting image.
 
 ## Features
 
@@ -24,14 +24,14 @@ A Python package for creating and customizing Windows ISO files using the [Unifi
 ### With pip
 
 ```bash
-pip install uup-builder-py
+pip install uup-builder
 ```
 
 ### From source
 
 ```bash
-git clone https://github.com/Cairnstew/uup-builder-py.git
-cd uup-builder-py
+git clone https://github.com/Cairnstew/uup-builder.git
+cd uup-builder
 pip install -e .
 ```
 
@@ -66,8 +66,8 @@ builder.build(edition="pro", lang="en-us", output="windows11.iso")
 ### Setup
 
 ```bash
-git clone https://github.com/Cairnstew/uup-builder-py.git
-cd uup-builder-py
+git clone https://github.com/Cairnstew/uup-builder.git
+cd uup-builder
 uv sync
 ```
 
@@ -80,7 +80,7 @@ pytest
 ## Project Structure
 
 ```
-uup-builder-py/
+uup-builder/
 ├── src/                  # Package source code
 ├── .github/workflows/    # CI/CD pipelines
 ├── pyproject.toml        # Project metadata and dependencies
