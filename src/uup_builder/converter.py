@@ -68,7 +68,7 @@ _EDITIONS = {
 # Metadata ESD pattern — UUP dump names them:  MetadataESD_<edition>_<lang>.esd
 # e.g.  MetadataESD_professional_en-us.esd
 _METADATA_RE = re.compile(
-    r"^MetadataESD_(" + "|".join(re.escape(e) for e in _EDITIONS) + r")_[a-z]{2}-[a-z]+\.esd$",
+    r"^(" + "|".join(re.escape(e) for e in _EDITIONS) + r")_[a-z]{2}-[a-z]+\.esd$",
     re.IGNORECASE,
 )
 
