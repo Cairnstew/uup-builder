@@ -13,6 +13,17 @@ dependencies = [
     "requests>=2.32.5",
     "uup-dump-api-py>=0.1.5",
 ]
+authors = [
+    { name = "Cairnstew", email = "sean.cairnsst@gmail.com" }
+]
+keywords = ["windows", "iso", "uup", "winbuilder"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Operating System :: OS Independent",
+]
+
 
 [project.optional-dependencies]
 pretty = ["rich>=13.0.0"]
@@ -32,3 +43,8 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 source = ["src"]
+
+[project.urls]
+Homepage = "https://github.com/Cairnstew/uup-builder-py"
+Repository = "https://github.com/Cairnstew/uup-builder-py"
+Issues = "https://github.com/Cairnstew/uup-builder-py/issues"
