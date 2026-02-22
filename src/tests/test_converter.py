@@ -126,26 +126,26 @@ class TestFindBackground:
 
 class TestMetadataRe:
     def test_matches_valid_metadata_esd(self):
-        assert _METADATA_RE.match("MetadataESD_professional_en-us.esd")
+        assert _METADATA_RE.match("professional_en-us.esd")
 
     def test_matches_core_german(self):
-        assert _METADATA_RE.match("MetadataESD_core_de-de.esd")
+        assert _METADATA_RE.match("core_de-de.esd")
 
     def test_case_insensitive(self):
-        assert _METADATA_RE.match("metadataesd_professional_en-us.esd")
+        assert _METADATA_RE.match("PROFESSIONAL_EN-US.esd")
 
     def test_no_match_for_unknown_edition(self):
-        assert not _METADATA_RE.match("MetadataESD_fakeedition_en-us.esd")
+        assert not _METADATA_RE.match("fakeedition_en-us.esd")
 
     def test_no_match_for_install_esd(self):
-        assert not _METADATA_RE.match("professional_en-us.esd")
+        assert not _METADATA_RE.match("Microsoft-Windows-Foundation-Package.ESD")
 
     def test_no_match_for_random_filename(self):
         assert not _METADATA_RE.match("Windows11.esd")
 
     def test_all_known_editions_match(self):
-        for edition in list(_EDITIONS)[:10]:  # spot-check first 10
-            filename = f"MetadataESD_{edition}_en-us.esd"
+        for edition in list(_EDITIONS)[:10]:
+            filename = f"{edition}_en-us.esd"
             assert _METADATA_RE.match(filename), f"Expected match for {filename}"
 
 
