@@ -44,21 +44,21 @@ jobs:
       - name: Upload to TestPyPI
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
-        run: nix develop .#python312 --command uv publish --publish-url https://test.pypi.org/legacy/
+        run: nix develop --command uv publish --publish-url https://test.pypi.org/legacy/
 
       - name: Validate TestPyPI install
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-          nix develop .#python312 --command pip install \
+          nix develop --command pip install \
             --index-url https://test.pypi.org/simple/ \
             --extra-index-url https://pypi.org/simple/ \
             uup-dump-api-py==$TAG_VERSION
-          nix develop .#python312 --command python -c "import uup_dump_api; print('✅ Import successful')"
+          nix develop --command python -c "import uup_dump_api; print('✅ Import successful')"
 
       - name: Upload to PyPI
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
-        run: nix develop .#python312 --command uv publish
+        run: nix develop --command uv publish
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
