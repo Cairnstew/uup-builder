@@ -32,7 +32,7 @@ jobs:
       - name: Use Cachix cache
         uses: cachix/cachix-action@v15
         with:
-          name: uup-dump-api-py-cache   
+          name: uup-builder-py-cache   
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Build dist
@@ -52,8 +52,8 @@ jobs:
           nix develop --command pip install \
             --index-url https://test.pypi.org/simple/ \
             --extra-index-url https://pypi.org/simple/ \
-            uup-dump-api-py==$TAG_VERSION
-          nix develop --command python -c "import uup_dump_api; print('✅ Import successful')"
+            uup-builder-py-cache==$TAG_VERSION
+          nix develop --command python -c "import uup_builder_py_cache; print('✅ Import successful')"
 
       - name: Upload to PyPI
         env:
