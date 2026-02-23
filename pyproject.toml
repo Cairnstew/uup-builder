@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "uup-builder"
-version = "0.1.5"
+version = "0.1.6"
 description = "Python Module for building an iso from uup dump files."
 readme = "README.md"
 requires-python = ">=3.10"
