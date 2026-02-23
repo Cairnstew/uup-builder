@@ -32,7 +32,7 @@ jobs:
       - name: Use Cachix cache
         uses: cachix/cachix-action@v15
         with:
-          name: uup-builder-py-cache   
+          name: uup-builder-py-cache
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Build dist
@@ -41,8 +41,9 @@ jobs:
       - name: Check dist before release
         run: echo "Current dir:" && pwd && echo "Listing dist:" && ls -lah dist
 
-      - name: Wait for tag propagation
-        run: sleep 5
+      # -----------------------------------------------------------------------
+      # TestPyPI — upload then validate before touching real PyPI
+      # -----------------------------------------------------------------------
 
       - name: Upload to TestPyPI (with retries)
         env:
@@ -50,38 +51,51 @@ jobs:
         run: |
           for i in 1 2 3; do
             echo "Attempt $i to upload to TestPyPI"
-            if nix develop --command uv publish \
-              --publish-url https://test.pypi.org/legacy/; then
+            output=$(nix develop --command uv publish \
+              --publish-url https://test.pypi.org/legacy/ 2>&1) && {
               echo "✅ TestPyPI upload succeeded"
               break
+            }
+            # Treat "already exists" as success so re-runs don't burn retries
+            if echo "$output" | grep -qi "already exists\|File already exists"; then
+              echo "✅ Already uploaded to TestPyPI, continuing"
+              break
             fi
-            echo "❌ TestPyPI upload failed, retrying in 15s..."
-            sleep 15
+            echo "❌ TestPyPI upload failed:"
+            echo "$output"
+            if [ "$i" -lt 3 ]; then
+              echo "Retrying in 15s..."
+              sleep 15
+            else
+              echo "❌ All TestPyPI upload attempts failed"
+              exit 1
+            fi
           done
-
-      - name: Wait for tag propagation
-        run: sleep 5
 
       - name: Validate TestPyPI install (wait until available)
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           for i in 1 2 3 4 5; do
             echo "Checking TestPyPI availability (attempt $i)"
-            if nix develop --command pip install \
+            if nix develop --command uv pip install \
               --index-url https://test.pypi.org/simple/ \
               --extra-index-url https://pypi.org/simple/ \
               uup-builder==$TAG_VERSION; then
               nix develop --command python -c "import uup_builder; print('✅ Import successful')"
-              exit 0
+              break
             fi
-            echo "Not available yet, waiting 20s..."
-            sleep 20
+            if [ "$i" -lt 5 ]; then
+              echo "Not available yet, waiting 20s..."
+              sleep 20
+            else
+              echo "❌ Package never became available on TestPyPI"
+              exit 1
+            fi
           done
-          echo "❌ Package never became available on TestPyPI"
-          exit 1
 
-      - name: Wait for tag propagation
-        run: sleep 5
+      # -----------------------------------------------------------------------
+      # Real PyPI — only reached if TestPyPI upload + validation passed
+      # -----------------------------------------------------------------------
 
       - name: Upload to PyPI (with retries)
         env:
@@ -93,11 +107,18 @@ jobs:
               echo "✅ PyPI upload succeeded"
               exit 0
             fi
-            echo "❌ PyPI upload failed, retrying in 20s..."
-            sleep 20
+            echo "❌ PyPI upload failed"
+            if [ "$i" -lt 3 ]; then
+              echo "Retrying in 20s..."
+              sleep 20
+            fi
           done
-          echo "❌ PyPI upload failed after retries"
+          echo "❌ PyPI upload failed after all retries"
           exit 1
+
+      # -----------------------------------------------------------------------
+      # GitHub Release
+      # -----------------------------------------------------------------------
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
