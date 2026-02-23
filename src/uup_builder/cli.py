@@ -15,6 +15,7 @@ import argparse
 from pathlib import Path
 
 from uup_builder.api import UUPClient
+from uup_builder.autounattend import AnswerFile
 from uup_builder.converter import Converter
 from uup_builder.downloader import Downloader, DEFAULT_CONCURRENCY, DEFAULT_OUT
 from uup_builder.interactive import pick_build, pick_edition, pick_lang
@@ -39,6 +40,15 @@ __all__ = ["build_parser", "main"]
 
 def _add_verbose(p: argparse.ArgumentParser) -> None:
     p.add_argument("--verbose", "-v", action="store_true", help="Enable DEBUG logging")
+
+
+def _add_answer_file(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--answer-file",
+        metavar="FILE",
+        default=None,
+        help="Path to an autounattend.xml answer file to embed in the ISO",
+    )
 
 
 def _resolve_build_lang_edition(
@@ -67,6 +77,14 @@ def _resolve_build_lang_edition(
         print_ok(f"Edition: {edition}")
 
     return update_id, lang, edition
+
+
+def _maybe_inject_answer_file(args: argparse.Namespace, uup_dir: str | Path) -> None:
+    """Inject an answer file into *uup_dir* if ``--answer-file`` was supplied."""
+    if getattr(args, "answer_file", None):
+        af = AnswerFile(args.answer_file)
+        dest = af.inject(uup_dir)
+        print_ok(f"Answer file injected: {dest}")
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +174,8 @@ def cmd_convert(args: argparse.Namespace) -> None:
     if not uup_dir.is_dir():
         bail(f"UUP directory not found: {uup_dir}")
 
+    _maybe_inject_answer_file(args, uup_dir)
+
     cv = Converter(compress=args.compress)
     cv.convert(uup_dir=uup_dir, iso_out=args.iso_out)
 
@@ -177,6 +197,8 @@ def cmd_build(args: argparse.Namespace) -> None:
     if args.no_convert:
         print_info("Skipping ISO conversion (--no-convert).")
         return
+
+    _maybe_inject_answer_file(args, args.out)
 
     cv = Converter(compress=args.compress)
     cv.convert(uup_dir=args.out, iso_out=args.iso_out)
@@ -236,6 +258,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Compression type: wim (default) or esd")
     p.add_argument("--iso-out", metavar="FILE", default=None,
                    help="Explicit output ISO path (optional)")
+    _add_answer_file(p)
     _add_verbose(p)
     p.set_defaults(func=cmd_convert)
 
@@ -255,6 +278,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--iso-out", metavar="FILE", default=None)
     p.add_argument("--no-convert", action="store_true",
                    help="Skip ISO conversion (download UUP files only)")
+    _add_answer_file(p)
     _add_verbose(p)
     p.set_defaults(func=cmd_build)
 

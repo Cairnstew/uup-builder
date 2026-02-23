@@ -31,10 +31,12 @@ CLI use::
 from uup_builder.api import UUPClient
 from uup_builder.downloader import Downloader
 from uup_builder.converter import Converter
+from uup_builder.autounattend import AnswerFile
 
 __all__ = [
     "__version__",
     "UUPClient",
     "Downloader",
     "Converter",
+    "AnswerFile",
 ]
