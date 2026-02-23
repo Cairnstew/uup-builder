@@ -12,8 +12,6 @@ import pytest
 # ---------------------------------------------------------------------------
 # Helpers / stubs so the module can be imported without the real dependency
 # ---------------------------------------------------------------------------
-
-# Stub out uup_dump_api so we can import uup_builder.api without it installed
 uup_dump_api_stub = MagicMock()
 uup_dump_api_stub.adapter.RestAdapter = MagicMock
 uup_dump_api_stub.exceptions.UUPDumpAPIError = type("UUPDumpAPIError", (Exception,), {})
@@ -23,12 +21,15 @@ uup_dump_api_stub.exceptions.UUPDumpResponseError = type(
 )
 uup_dump_api_stub.exceptions.UUPDumpTimeoutError = type("UUPDumpTimeoutError", (Exception,), {})
 
-sys.modules.setdefault("uup_dump_api", uup_dump_api_stub)
-sys.modules.setdefault("uup_dump_api.adapter", uup_dump_api_stub.adapter)
-sys.modules.setdefault("uup_dump_api.exceptions", uup_dump_api_stub.exceptions)
+# Force stub in regardless of import order
+sys.modules["uup_dump_api"] = uup_dump_api_stub
+sys.modules["uup_dump_api.adapter"] = uup_dump_api_stub.adapter
+sys.modules["uup_dump_api.exceptions"] = uup_dump_api_stub.exceptions
 
-from uup_builder.api import UUPClient, UUPClientError  # noqa: E402
+# Ensure api.py re-imports with the stub active
+sys.modules.pop("uup_builder.api", None)
 
+from uup_builder.api import UUPClient, UUPClientError
 
 # ---------------------------------------------------------------------------
 # list_builds
