@@ -1,6 +1,6 @@
 [build-system]
-requires = ["uv_build>=0.9.0,<0.10.0"]
-build-backend = "uv_build"
+requires = ["hatchling", "editables"]
+build-backend = "hatchling.build"
 
 [project]
 name = "uup-builder"
@@ -35,8 +35,8 @@ dev = [
 [project.scripts]
 uup-builder = "uup_builder.cli:main"
 
-[tool.uv]
-package = true
+[tool.uv.extra-build-dependencies]
+uup-builder = ["uv_build"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
