@@ -41,24 +41,63 @@ jobs:
       - name: Check dist before release
         run: echo "Current dir:" && pwd && echo "Listing dist:" && ls -lah dist
 
-      - name: Upload to TestPyPI
+      - name: Wait for tag propagation
+        run: sleep 5
+
+      - name: Upload to TestPyPI (with retries)
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
-        run: nix develop --command uv publish --publish-url https://test.pypi.org/legacy/
+        run: |
+          for i in 1 2 3; do
+            echo "Attempt $i to upload to TestPyPI"
+            if nix develop --command uv publish \
+              --publish-url https://test.pypi.org/legacy/; then
+              echo "✅ TestPyPI upload succeeded"
+              break
+            fi
+            echo "❌ TestPyPI upload failed, retrying in 15s..."
+            sleep 15
+          done
 
-      - name: Validate TestPyPI install
+      - name: Wait for tag propagation
+        run: sleep 5
+
+      - name: Validate TestPyPI install (wait until available)
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-          nix develop --command pip install \
-            --index-url https://test.pypi.org/simple/ \
-            --extra-index-url https://pypi.org/simple/ \
-            uup-builder==$TAG_VERSION
-          nix develop --command python -c "import uup_builder; print('✅ Import successful')"
+          for i in 1 2 3 4 5; do
+            echo "Checking TestPyPI availability (attempt $i)"
+            if nix develop --command pip install \
+              --index-url https://test.pypi.org/simple/ \
+              --extra-index-url https://pypi.org/simple/ \
+              uup-builder==$TAG_VERSION; then
+              nix develop --command python -c "import uup_builder; print('✅ Import successful')"
+              exit 0
+            fi
+            echo "Not available yet, waiting 20s..."
+            sleep 20
+          done
+          echo "❌ Package never became available on TestPyPI"
+          exit 1
 
-      - name: Upload to PyPI
+      - name: Wait for tag propagation
+        run: sleep 5
+
+      - name: Upload to PyPI (with retries)
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
-        run: nix develop --command uv publish
+        run: |
+          for i in 1 2 3; do
+            echo "Attempt $i to upload to PyPI"
+            if nix develop --command uv publish; then
+              echo "✅ PyPI upload succeeded"
+              exit 0
+            fi
+            echo "❌ PyPI upload failed, retrying in 20s..."
+            sleep 20
+          done
+          echo "❌ PyPI upload failed after retries"
+          exit 1
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
