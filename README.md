@@ -1,87 +1,175 @@
 # uup-builder
 
-A Python package for creating and customizing Windows ISO files using the [Unified Update Platform (UUP)](https://learn.microsoft.com/en-us/windows/deployment/update/windows-update-overview).
+[![PyPI version](https://badge.fury.io/py/uup-builder.svg)](https://pypi.org/project/uup-builder/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+
+A Python package and CLI tool for creating and customizing Windows ISO files using Microsoft's [Unified Update Platform (UUP)](https://learn.microsoft.com/en-us/windows/deployment/update/windows-update-overview).
 
 ## Overview
 
-`uup-builder` provides a programmatic interface to download Windows update packages from Microsoft's Unified Update Platform and convert them into bootable ISO files. It allows you to select specific Windows editions, languages, and components, giving you full control over the resulting image.
+`uup-builder` provides a simple way to download Windows update packages from the UUP dump API, download the necessary files from Microsoft's servers, and convert them into bootable ISO images. It supports selecting specific editions, languages, and offers both a programmatic Python API and an interactive command-line interface.
+
+This tool is ideal for developers, system administrators, or enthusiasts who need custom Windows installations for testing, deployment, or personal use.
 
 ## Features
 
-- Download Windows packages directly from Microsoft's UUP servers
-- Build customized Windows ISO files
-- Select target Windows edition and language
-- Scriptable and automatable via Python API
-- CI/CD ready with GitHub Actions support
+- Search and list available Windows builds from the UUP dump database
+- Interactive selection of builds, languages, and editions
+- Download UUP files with resume support, parallel downloads, and SHA-1 verification
+- Convert UUP files to bootable ISO images using the official `convert.sh` script
+- Support for compression types (WIM or ESD)
+- Automatic installation of required system dependencies (on supported platforms)
+- CI/CD friendly with GitHub Actions support
+- Rich terminal output (via `rich` library, optional)
 
 ## Requirements
 
-- Python 3.10+
-- [`uv`](https://github.com/astral-sh/uv) (recommended for dependency management)
+### Python
+- Python 3.10 or higher
+
+### System Dependencies
+The conversion step requires the following binaries:
+- `aria2c`
+- `cabextract`
+- `wimlib-imagex`
+- `chntpw`
+- `genisoimage` or `mkisofs`
+
+These can be automatically installed on supported systems (Linux: apt, pacman, dnf, zypper; macOS: Homebrew). Run `uup-builder convert` and it will prompt to install if missing.
+
+**Note:** Conversion is not supported on Windows; use Linux or macOS for ISO building.
 
 ## Installation
 
-### With pip
-
+### From PyPI
 ```bash
 pip install uup-builder
 ```
 
-### From source
-
+### From Source
 ```bash
 git clone https://github.com/Cairnstew/uup-builder.git
 cd uup-builder
 pip install -e .
 ```
 
-### With uv
-
+### Using uv (Recommended for Development)
 ```bash
 uv sync
 ```
 
-### With Nix
-
-A `flake.nix` is provided for reproducible development environments:
-
+### Using Nix
+For reproducible environments:
 ```bash
 nix develop
 ```
 
 ## Usage
 
-> ⚠️ **Note:** Fill in usage examples based on the package's public API.
+`uup-builder` can be used via the command-line interface or as a Python library.
+
+### Command-Line Interface
+
+Run `uup-builder --help` for full options.
+
+#### Key Commands
+
+- **List Builds**
+  ```bash
+  uup-builder list --search "Windows 11"
+  ```
+  Lists available builds matching the search query.
+
+- **List Languages**
+  ```bash
+  uup-builder langs --id <UUID>
+  ```
+  Lists languages for a specific build UUID.
+
+- **List Editions**
+  ```bash
+  uup-builder editions --id <UUID> --lang en-us
+  ```
+  Lists editions for a build and language.
+
+- **Download UUP Files**
+  ```bash
+  uup-builder download --id <UUID> --lang en-us --edition professional --out UUPs
+  ```
+  Downloads files to the specified directory (interactive if options omitted).
+
+- **Convert to ISO**
+  ```bash
+  uup-builder convert --uup-dir UUPs --compress wim
+  ```
+  Converts downloaded UUP files to an ISO.
+
+- **Full Build Pipeline**
+  ```bash
+  uup-builder build --search "Windows 11" --lang en-us --edition professional
+  ```
+  Interactively or directly downloads and builds the ISO.
+
+Example full command:
+```bash
+uup-builder build --id <UUID> --lang en-us --edition professional --out UUPs --concurrency 8 --compress esd
+```
+
+Use `--verbose` for detailed logging.
+
+### Python API
 
 ```python
-from uup_builder import ...  # update with actual import
+from uup_builder import UUPClient, Downloader, Converter
 
-# Example: build a Windows 11 ISO
-builder = ...
-builder.build(edition="pro", lang="en-us", output="windows11.iso")
+# Initialize client
+client = UUPClient()
+
+# List builds
+builds = client.list_builds(search="Windows 11", sort_by_date=True)
+
+# Get files metadata for a specific build/language/edition
+file_data = client.get_files(update_id="your-uuid", lang="en-us", edition="professional")
+
+# Download files
+dl = Downloader(out_dir="UUPs", concurrency=4)
+dl.download_all(file_data)
+
+# Convert to ISO
+cv = Converter(compress="wim")
+cv.convert(uup_dir="UUPs")
 ```
+
+For interactive selection, use functions from `uup_builder.interactive`.
 
 ## Development
 
 ### Setup
-
 ```bash
 git clone https://github.com/Cairnstew/uup-builder.git
 cd uup-builder
 uv sync
 ```
 
-### Running tests
-
+### Running Tests
 ```bash
 pytest
 ```
 
-## Project Structure
-
+### Project Structure
 ```
 uup-builder/
 ├── src/                  # Package source code
+│   └── uup_builder/
+│       ├── __init__.py
+│       ├── api.py        # UUP API client
+│       ├── cli.py        # Command-line interface
+│       ├── converter.py  # ISO conversion
+│       ├── deps.py       # Dependency installer
+│       ├── downloader.py # File downloader
+│       ├── interactive.py# Pickers for CLI
+│       └── output.py     # Console helpers
 ├── .github/workflows/    # CI/CD pipelines
 ├── pyproject.toml        # Project metadata and dependencies
 ├── pytest.ini            # Test configuration
