@@ -44,6 +44,12 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["src"]
 
+[dependency-groups]
+dev = [
+    "build>=1.4.0",
+    "twine>=6.2.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/Cairnstew/uup-builder-py"
 Repository = "https://github.com/Cairnstew/uup-builder-py"
