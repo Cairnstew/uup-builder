@@ -48,8 +48,8 @@ jobs:
       - name: Validate TestPyPI install (wait until available)
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-          nix develop --command uv venv /tmp/validate-env
-
+          nix develop --command uv venv --clear /tmp/validate-env
+          
           for i in 1 2 3 4 5; do
             echo "Checking TestPyPI availability (attempt $i)"
             if nix develop --command uv pip install \
