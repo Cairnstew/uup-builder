@@ -58,9 +58,7 @@ jobs:
               --extra-index-url https://pypi.org/simple/ \
               --index-strategy unsafe-best-match \
               uup-builder==$TAG_VERSION; then
-              nix develop --command uv run \
-                --python /tmp/validate-env \
-                python -c "import uup_builder; print('✅ Import successful')"
+              /tmp/validate-env/bin/python -c "import uup_builder; print('✅ Import successful')"
               break
             fi
             if [ "$i" -lt 5 ]; then
