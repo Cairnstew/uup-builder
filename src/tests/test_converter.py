@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
@@ -184,6 +184,11 @@ class TestConvert:
         script.chmod(0o755)
         return script
 
+    # ensure_deps is patched throughout convert tests so we don't need real
+    # binaries on the test machine — it now exits rather than installs, so
+    # tests that care about subprocess behaviour must suppress it.
+    _DEPS_OK = {"uup_builder.deps.ensure_deps": MagicMock()}
+
     def test_raises_on_windows(self, tmp_path, monkeypatch):
         monkeypatch.setattr(sys, "platform", "win32")
         with pytest.raises(SystemExit):
@@ -191,7 +196,8 @@ class TestConvert:
 
     def test_raises_if_uup_dir_missing(self, tmp_path):
         self._make_script(tmp_path)
-        with patch("shutil.which", return_value="/usr/bin/tool"):
+        with patch("shutil.which", return_value="/usr/bin/tool"), \
+             patch("uup_builder.deps.ensure_deps"):
             with pytest.raises(SystemExit):
                 Converter(cache_dir=tmp_path).convert(uup_dir=tmp_path / "nope")
 
@@ -221,7 +227,7 @@ class TestConvert:
             Converter(virtual_editions=True, cache_dir=tmp_path).convert(uup_dir=uup_dir)
 
         cmd = mock_run.call_args[0][0]
-        assert "1" in cmd  # virtual_editions=True → "1"
+        assert "1" in cmd
 
     def test_no_virtual_editions_passes_zero(self, tmp_path):
         uup_dir = tmp_path / "UUPs"
@@ -263,3 +269,22 @@ class TestConvert:
         cmd = mock_run.call_args[0][0]
         uup_dir_in_cmd = next(a for a in cmd if "UUPs" in str(a))
         assert Path(uup_dir_in_cmd).is_absolute()
+
+    def test_missing_deps_exits_without_installing(self, tmp_path):
+        """When deps are missing, convert() must exit — never attempt installation."""
+        uup_dir = tmp_path / "UUPs"
+        uup_dir.mkdir()
+        self._make_script(tmp_path)
+
+        with patch("shutil.which", return_value=None), \
+             patch("subprocess.run") as mock_subprocess, \
+             patch("uup_builder.deps._detect_pm", return_value="apt"):
+            with pytest.raises(SystemExit):
+                Converter(cache_dir=tmp_path).convert(uup_dir=uup_dir)
+
+        # subprocess.run should never have been called for package installation
+        for c in mock_subprocess.call_args_list:
+            cmd = c[0][0]
+            assert "apt-get" not in cmd, "apt-get must not be called automatically"
+            assert "install" not in cmd or "convert.sh" in str(cmd), \
+                "install subprocess must not be called automatically"

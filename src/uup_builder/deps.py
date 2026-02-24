@@ -1,11 +1,11 @@
 """
 uup_builder.deps
 ----------------
-Detects the system package manager and auto-installs any missing
-binary dependencies required by the converter.
+Checks that the binary dependencies required by the converter are present
+on PATH and, if any are missing, prints clear manual-install instructions
+and exits.
 
-Supported package managers: apt, pacman, dnf, zypper, brew.
-macOS Homebrew tap ``sidneys/homebrew`` is added automatically for chntpw.
+Supported package managers for install hints: apt, pacman, dnf, zypper, brew.
 """
 
 from __future__ import annotations
@@ -13,12 +13,10 @@ from __future__ import annotations
 import logging
 import platform
 import shutil
-import subprocess
 import sys
-from dataclasses import dataclass, field
 from typing import Optional
 
-from uup_builder.output import bail, print_info, print_ok, print_msg, HAS_RICH
+from uup_builder.output import bail, print_msg, HAS_RICH
 
 __all__ = ["ensure_deps"]
 
@@ -56,7 +54,7 @@ _PKG_MAP: dict[str, dict[str, str]] = {
         "pacman": "chntpw",
         "dnf":    "chntpw",
         "zypper": "chntpw",
-        "brew":   "chntpw",           # requires sidneys/homebrew or minacle/chntpw tap
+        "brew":   "chntpw",  # requires sidneys/homebrew or minacle/chntpw tap
     },
     "genisoimage": {
         "apt":    "genisoimage",
@@ -72,111 +70,69 @@ _ISO_ALTERNATIVES = {"genisoimage", "mkisofs"}
 
 
 # ---------------------------------------------------------------------------
-# Package manager detection
+# Package manager detection (used only to tailor the hint message)
 # ---------------------------------------------------------------------------
 
-@dataclass
-class _PackageManager:
-    name: str
-    install_cmd: list[str]          # base install command (without package names)
-    update_cmd:  Optional[list[str]] = None   # update index before installing
-    sudo: bool = True               # prepend sudo?
-    extra_setup: list[list[str]] = field(default_factory=list)  # extra commands to run first
-
-
-def _detect_pm() -> Optional[_PackageManager]:
+def _detect_pm() -> Optional[str]:
+    """Return the name of the detected package manager, or None."""
     system = platform.system()
-
     if system == "Darwin":
-        if shutil.which("brew"):
-            return _PackageManager(
-                name="brew",
-                install_cmd=["brew", "install"],
-                sudo=False,
-                extra_setup=[
-                    # tap needed for chntpw on Intel Macs
-                    ["brew", "tap", "sidneys/homebrew"],
-                ],
-            )
-        return None
-
+        return "brew" if shutil.which("brew") else None
     if system == "Linux":
-        if shutil.which("apt-get"):
-            return _PackageManager(
-                name="apt",
-                install_cmd=["apt-get", "install", "-y"],
-                update_cmd=["apt-get", "update", "-y"],
-                sudo=True,
-            )
-        if shutil.which("pacman"):
-            return _PackageManager(
-                name="pacman",
-                install_cmd=["pacman", "-S", "--noconfirm"],
-                update_cmd=["pacman", "-Sy"],
-                sudo=True,
-            )
-        if shutil.which("dnf"):
-            return _PackageManager(
-                name="dnf",
-                install_cmd=["dnf", "install", "-y"],
-                sudo=True,
-            )
-        if shutil.which("zypper"):
-            return _PackageManager(
-                name="zypper",
-                install_cmd=["zypper", "install", "-y"],
-                sudo=True,
-            )
-
+        for pm in ("apt-get", "pacman", "dnf", "zypper"):
+            if shutil.which(pm):
+                # normalise apt-get → apt for the hint lookup
+                return "apt" if pm == "apt-get" else pm
     return None
 
 
-# ---------------------------------------------------------------------------
-# Install helpers
-# ---------------------------------------------------------------------------
+def _install_hint(missing_bins: list[str], pm: Optional[str]) -> str:
+    """Build a human-readable install command for the missing binaries."""
+    if pm is None:
+        pkg_names = [
+            _PKG_MAP.get(b, {}).get("apt", b)   # fall back to the exe name itself
+            for b in missing_bins
+        ]
+        return (
+            "No supported package manager detected.\n"
+            "Please install the following tools manually:\n"
+            + "\n".join(f"  • {b}" for b in missing_bins)
+        )
 
-def _prepend_sudo(cmd: list[str], use_sudo: bool) -> list[str]:
-    if use_sudo and shutil.which("sudo"):
-        return ["sudo"] + cmd
-    return cmd
+    pkg_names: list[str] = []
+    for exe in missing_bins:
+        pkg = _PKG_MAP.get(exe, {}).get(pm)
+        pkg_names.append(pkg if pkg else exe)
 
+    pm_cmds = {
+        "apt":    f"sudo apt-get install -y {' '.join(pkg_names)}",
+        "pacman": f"sudo pacman -S --noconfirm {' '.join(pkg_names)}",
+        "dnf":    f"sudo dnf install -y {' '.join(pkg_names)}",
+        "zypper": f"sudo zypper install -y {' '.join(pkg_names)}",
+        "brew":   f"brew install {' '.join(pkg_names)}",
+    }
 
-def _run_install(cmd: list[str]) -> None:
-    log.debug("$ %s", " ".join(cmd))
-    result = subprocess.run(cmd)
-    if result.returncode != 0:
-        bail(f"Installation command failed (exit {result.returncode}): {' '.join(cmd)}")
+    extra = ""
+    if pm == "brew" and "chntpw" in missing_bins:
+        extra = "\n  (chntpw also requires: brew tap sidneys/homebrew)"
 
-
-def _install_packages(pm: _PackageManager, packages: list[str]) -> None:
-    # Run any extra setup steps (e.g. brew tap)
-    for extra in pm.extra_setup:
-        log.debug("Extra setup: %s", " ".join(extra))
-        subprocess.run(extra, check=False)
-
-    # Update package index
-    if pm.update_cmd:
-        print_info(f"Updating package index ({pm.name})…")
-        _run_install(_prepend_sudo(pm.update_cmd, pm.sudo))
-
-    # Install
-    cmd = _prepend_sudo(pm.install_cmd + packages, pm.sudo)
-    print_info(f"Installing: {' '.join(packages)}")
-    _run_install(cmd)
+    return f"Run:{extra}\n  {pm_cmds[pm]}"
 
 
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def ensure_deps(required_bins: list[str], iso_alternatives: set[str] = _ISO_ALTERNATIVES) -> None:
+def ensure_deps(
+    required_bins: list[str],
+    iso_alternatives: set[str] = _ISO_ALTERNATIVES,
+) -> None:
     """
-    Check that every binary in *required_bins* is on PATH.
+    Verify every binary in *required_bins* is on PATH.
     For ISO tools, at least one of *iso_alternatives* must be present.
 
-    Any missing tools are installed automatically using the detected
-    system package manager.  Exits with an error if no supported package
-    manager is found.
+    If anything is missing, print a clear message with the install command
+    for the detected package manager, then exit.
 
     Parameters
     ----------
@@ -186,58 +142,20 @@ def ensure_deps(required_bins: list[str], iso_alternatives: set[str] = _ISO_ALTE
         Set of executable names where *any one* being present is sufficient.
     """
     missing_bins: list[str] = [b for b in required_bins if not shutil.which(b)]
+
     iso_ok = any(shutil.which(b) for b in iso_alternatives)
     if not iso_ok:
-        # Pick the first iso alternative as the one to install
         missing_bins.append(next(iter(iso_alternatives)))
 
     if not missing_bins:
         log.debug("All dependencies satisfied.")
         return
 
-    _warn(f"Missing dependencies: {', '.join(missing_bins)}")
-
     pm = _detect_pm()
-    if pm is None:
-        bail(
-            "Could not detect a supported package manager "
-            "(apt, pacman, dnf, zypper, brew).\n"
-            "Please install the following manually and re-run:\n"
-            + "\n".join(f"  • {b}" for b in missing_bins)
-        )
+    hint = _install_hint(missing_bins, pm)
 
-    # Resolve executable names → package names for this package manager
-    packages_to_install: list[str] = []
-    for exe in missing_bins:
-        pkg_name = _PKG_MAP.get(exe, {}).get(pm.name)
-        if pkg_name is None:
-            bail(
-                f"No known package name for '{exe}' on {pm.name}. "
-                "Please install it manually."
-            )
-        if pkg_name not in packages_to_install:
-            packages_to_install.append(pkg_name)
-
-    _install_packages(pm, packages_to_install)
-
-    # Verify everything is now available
-    still_missing = [b for b in missing_bins if not shutil.which(b)]
-    # Re-check ISO tools too
-    if not any(shutil.which(b) for b in iso_alternatives):
-        still_missing.append(f"one of: {', '.join(iso_alternatives)}")
-
-    if still_missing:
-        bail(
-            "Installation appeared to succeed but these tools are still not found: "
-            + ", ".join(still_missing)
-            + "\nTry installing them manually."
-        )
-
-    print_ok("All dependencies installed.")
-
-
-def _warn(msg: str) -> None:
-    if HAS_RICH:
-        print_msg(f"[yellow]⚠[/yellow] {msg}")
-    else:
-        print(f"⚠ {msg}")
+    bail(
+        f"Missing required tools: {', '.join(missing_bins)}\n\n"
+        f"{hint}\n\n"
+        "Once installed, re-run uup_builder."
+    )

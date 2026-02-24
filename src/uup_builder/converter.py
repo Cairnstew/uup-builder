@@ -4,13 +4,15 @@ uup_builder.converter
 Downloads and runs the official uup-dump/converter ``convert.sh`` script.
 
 The script is fetched from https://git.uupdump.net/uup-dump/converter on
-first use and cached locally. Running it requires the same system binaries:
+first use and cached locally. Running it requires these system binaries:
     aria2c, cabextract, wimlib-imagex, chntpw, genisoimage (or mkisofs)
+
+If any binaries are missing, uup_builder will print install instructions
+and exit rather than attempting to install them automatically.
 """
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import shutil
 import subprocess
@@ -79,10 +81,6 @@ class Converter:
             missing.append("genisoimage or mkisofs")
         return missing
 
-    def install_deps(self) -> None:
-        """Install any missing system dependencies."""
-        ensure_deps(_REQUIRED_BINS, set(_ISO_BINS))
-
     def ensure_script(self, force: bool = False) -> Path:
         """
         Download ``convert.sh`` into ``cache_dir`` if not already present.
@@ -138,6 +136,9 @@ class Converter:
         """
         Convert UUP files in *uup_dir* to a bootable ISO by running ``convert.sh``.
 
+        Missing system dependencies cause an immediate exit with install
+        instructions rather than any automatic installation attempt.
+
         Parameters
         ----------
         uup_dir:
@@ -155,17 +156,17 @@ class Converter:
         if not uup_dir.is_dir():
             bail(f"UUP directory not found: {uup_dir}")
 
+        # Check deps — exits with install instructions if anything is missing.
         ensure_deps(_REQUIRED_BINS, set(_ISO_BINS))
+
         script = self.ensure_script(force=update_script)
 
-        # convert.sh sources sibling files (convert_ve_plugin, convert_config_linux)
-        # relative to dirname($0). To keep the ISO in the caller's cwd we copy
-        # only the needed script files to a temp directory, run from cwd.
-        import tempfile, shutil as _shutil
+        import tempfile
+        import shutil as _shutil
+
         cwd = Path.cwd()
         with tempfile.TemporaryDirectory(prefix="uup_convert_") as run_dir:
             run_dir = Path(run_dir)
-            # Copy script and optional sibling files into the temp run dir
             for name in ("convert.sh", "convert_ve_plugin",
                          "convert_config_linux", "convert_config_macos"):
                 src = self.cache_dir / name
@@ -182,6 +183,7 @@ class Converter:
 
             print_info(f"Running convert.sh (ISO will be written to {cwd})")
             result = subprocess.run(cmd, cwd=str(cwd))
+
         if result.returncode != 0:
             bail(f"convert.sh exited with code {result.returncode}")
 

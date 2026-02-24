@@ -5,14 +5,14 @@ Tests for uup_builder.deps
 from __future__ import annotations
 
 import sys
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 for mod in ("uup_dump_api", "uup_dump_api.adapter", "uup_dump_api.exceptions"):
     sys.modules.setdefault(mod, MagicMock())
 
-from uup_builder.deps import ensure_deps, _detect_pm, _PKG_MAP  # noqa: E402
+from uup_builder.deps import ensure_deps, _detect_pm, _PKG_MAP, _install_hint  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -28,8 +28,7 @@ class TestDetectPm:
              patch("shutil.which", side_effect=_which):
             pm = _detect_pm()
 
-        assert pm is not None
-        assert pm.name == "apt"
+        assert pm == "apt"
 
     def test_detects_brew_on_macos(self):
         def _which(name):
@@ -39,9 +38,7 @@ class TestDetectPm:
              patch("shutil.which", side_effect=_which):
             pm = _detect_pm()
 
-        assert pm is not None
-        assert pm.name == "brew"
-        assert pm.sudo is False
+        assert pm == "brew"
 
     def test_detects_pacman(self):
         def _which(name):
@@ -51,8 +48,7 @@ class TestDetectPm:
              patch("shutil.which", side_effect=_which):
             pm = _detect_pm()
 
-        assert pm is not None
-        assert pm.name == "pacman"
+        assert pm == "pacman"
 
     def test_detects_dnf(self):
         def _which(name):
@@ -62,8 +58,7 @@ class TestDetectPm:
              patch("shutil.which", side_effect=_which):
             pm = _detect_pm()
 
-        assert pm is not None
-        assert pm.name == "dnf"
+        assert pm == "dnf"
 
     def test_returns_none_on_windows(self):
         with patch("platform.system", return_value="Windows"), \
@@ -79,16 +74,47 @@ class TestDetectPm:
 
 
 # ---------------------------------------------------------------------------
+# _install_hint
+# ---------------------------------------------------------------------------
+
+class TestInstallHint:
+    def test_hint_contains_package_name(self):
+        hint = _install_hint(["aria2c"], "apt")
+        assert "aria2" in hint
+
+    def test_hint_contains_pm_command(self):
+        hint = _install_hint(["aria2c"], "apt")
+        assert "apt-get" in hint
+
+    def test_hint_brew_chntpw_includes_tap(self):
+        hint = _install_hint(["chntpw"], "brew")
+        assert "sidneys/homebrew" in hint
+
+    def test_hint_no_pm_lists_binaries(self):
+        hint = _install_hint(["aria2c", "wimlib-imagex"], None)
+        assert "aria2c" in hint
+        assert "wimlib-imagex" in hint
+
+    def test_unknown_bin_falls_back_to_exe_name(self):
+        hint = _install_hint(["sometool"], "apt")
+        assert "sometool" in hint
+
+
+# ---------------------------------------------------------------------------
 # ensure_deps — all present
 # ---------------------------------------------------------------------------
 
 class TestEnsureDepsAllPresent:
-    def test_no_install_when_all_present(self):
+    def test_no_exit_when_all_present(self):
         with patch("shutil.which", return_value="/usr/bin/tool"):
-            # Should not raise or call install
-            with patch("uup_builder.deps._install_packages") as mock_install:
-                ensure_deps(["aria2c", "cabextract"], iso_alternatives={"genisoimage"})
-            mock_install.assert_not_called()
+            # Should return silently without raising
+            ensure_deps(["aria2c", "cabextract"], iso_alternatives={"genisoimage"})
+
+    def test_does_not_call_install_when_all_present(self):
+        with patch("shutil.which", return_value="/usr/bin/tool"), \
+             patch("uup_builder.deps._install_hint") as mock_hint:
+            ensure_deps(["aria2c"], iso_alternatives={"genisoimage"})
+        mock_hint.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -96,59 +122,58 @@ class TestEnsureDepsAllPresent:
 # ---------------------------------------------------------------------------
 
 class TestEnsureDepsMissing:
-    def test_missing_binary_triggers_install(self):
-        def _which(name):
-            # Only genisoimage (iso alt) is present; aria2c is missing
-            return "/usr/bin/genisoimage" if name == "genisoimage" else None
-
-        # Fake an apt PM
-        from uup_builder.deps import _PackageManager
-        fake_pm = _PackageManager(
-            name="apt",
-            install_cmd=["apt-get", "install", "-y"],
-            sudo=False,
-        )
-
-        with patch("shutil.which", side_effect=_which), \
-             patch("uup_builder.deps._detect_pm", return_value=fake_pm), \
-             patch("uup_builder.deps._install_packages") as mock_install, \
-             patch("uup_builder.deps._prepend_sudo", side_effect=lambda cmd, _: cmd):
-
-            # After "install", pretend aria2c is now available
-            call_count = {"n": 0}
-            original_which = _which
-
-            def _which_after(name):
-                call_count["n"] += 1
-                # After install_packages is called, everything is available
-                if mock_install.called:
-                    return f"/usr/bin/{name}"
-                return original_which(name)
-
-            with patch("shutil.which", side_effect=_which_after):
+    def test_exits_when_binary_missing(self):
+        with patch("shutil.which", return_value=None), \
+             patch("uup_builder.deps._detect_pm", return_value="apt"):
+            with pytest.raises(SystemExit):
                 ensure_deps(["aria2c"], iso_alternatives={"genisoimage"})
 
-        mock_install.assert_called_once()
-
-    def test_no_pm_found_exits(self):
+    def test_exits_with_no_pm(self):
         with patch("shutil.which", return_value=None), \
              patch("uup_builder.deps._detect_pm", return_value=None):
             with pytest.raises(SystemExit):
                 ensure_deps(["aria2c"], iso_alternatives={"genisoimage"})
 
-    def test_unknown_package_for_pm_exits(self):
-        from uup_builder.deps import _PackageManager
-        fake_pm = _PackageManager(
-            name="apt",
-            install_cmd=["apt-get", "install", "-y"],
-            sudo=False,
-        )
-
+    def test_exit_message_contains_missing_bin(self, capsys):
         with patch("shutil.which", return_value=None), \
-             patch("uup_builder.deps._detect_pm", return_value=fake_pm):
-            # "unknowntool" has no mapping in _PKG_MAP
+             patch("uup_builder.deps._detect_pm", return_value="apt"), \
+             patch("uup_builder.deps.bail", side_effect=SystemExit) as mock_bail:
             with pytest.raises(SystemExit):
-                ensure_deps(["unknowntool"], iso_alternatives={"genisoimage"})
+                ensure_deps(["aria2c"], iso_alternatives={"genisoimage"})
+        args = mock_bail.call_args[0][0]
+        assert "aria2c" in args
+
+    def test_exit_message_contains_install_command(self):
+        with patch("shutil.which", return_value=None), \
+             patch("uup_builder.deps._detect_pm", return_value="apt"), \
+             patch("uup_builder.deps.bail", side_effect=SystemExit) as mock_bail:
+            with pytest.raises(SystemExit):
+                ensure_deps(["aria2c"], iso_alternatives={"genisoimage"})
+        args = mock_bail.call_args[0][0]
+        assert "apt-get" in args or "install" in args
+
+    def test_missing_iso_tool_included_in_message(self):
+        def _which(name):
+            # All required bins present; no ISO tool present
+            return "/usr/bin/tool" if name not in ("genisoimage", "mkisofs") else None
+
+        with patch("shutil.which", side_effect=_which), \
+             patch("uup_builder.deps._detect_pm", return_value="apt"), \
+             patch("uup_builder.deps.bail", side_effect=SystemExit) as mock_bail:
+            with pytest.raises(SystemExit):
+                ensure_deps(["aria2c"], iso_alternatives={"genisoimage", "mkisofs"})
+        args = mock_bail.call_args[0][0]
+        assert "genisoimage" in args or "mkisofs" in args
+
+    def test_no_install_attempt_is_made(self):
+        """ensure_deps must never try to run any install subprocess."""
+        with patch("shutil.which", return_value=None), \
+             patch("uup_builder.deps._detect_pm", return_value="apt"), \
+             patch("subprocess.run") as mock_run, \
+             patch("uup_builder.deps.bail", side_effect=SystemExit):
+            with pytest.raises(SystemExit):
+                ensure_deps(["aria2c"], iso_alternatives={"genisoimage"})
+        mock_run.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +182,7 @@ class TestEnsureDepsMissing:
 
 class TestPkgMap:
     EXPECTED_BINS = ["aria2c", "cabextract", "wimlib-imagex", "chntpw", "genisoimage"]
-    EXPECTED_PMS = ["apt", "pacman", "dnf", "zypper", "brew"]
+    EXPECTED_PMS  = ["apt", "pacman", "dnf", "zypper", "brew"]
 
     def test_all_bins_have_apt_entry(self):
         for binary in self.EXPECTED_BINS:
