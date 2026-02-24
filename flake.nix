@@ -75,6 +75,11 @@
             packages = [
               virtualenv
               pkgs.uv
+              pkgs.aria2
+              pkgs.cabextract
+              pkgs.wimlib
+              pkgs.chntpw
+              pkgs.cdrtools 
             ];
             env = {
               UV_NO_SYNC = "1";
@@ -96,11 +101,22 @@
           pythonSet = pythonSets.${system};
           util = pkgs.callPackage pyproject-nix.build.util { };
           venv = pythonSet.mkVirtualEnv "env" workspace.deps.default;
-        in
-        {
-          default = util.mkApplication {
+          app = util.mkApplication {
             inherit venv;
             package = pythonSet.${name};
+          };
+        in
+        {
+          default = pkgs.symlinkJoin {
+            name = name;
+            paths = [
+              app
+              pkgs.aria2
+              pkgs.cabextract
+              pkgs.wimlib
+              pkgs.chntpw
+              pkgs.cdrtools
+            ];
           };
         }
       );
