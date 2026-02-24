@@ -45,36 +45,31 @@ jobs:
       # TestPyPI — upload then validate before touching real PyPI
       # -----------------------------------------------------------------------
 
-      - name: Upload to TestPyPI (with retries)
-        env:
-          UV_PUBLISH_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
+      - name: Validate TestPyPI install (wait until available)
         run: |
-          upload_file() {
-            local file=$1
-            for i in 1 2 3; do
-              echo "Attempt $i to upload $(basename $file) to TestPyPI"
-              output=$(nix develop --command uv publish \
-                --publish-url https://test.pypi.org/legacy/ \
-                "$file" 2>&1)
-              status=$?
-              echo "$output"
-              if [ $status -eq 0 ]; then
-                echo "✅ $(basename $file) uploaded"
-                return 0
-              fi
-              if echo "$output" | grep -qi "already exists\|File already exists\|already been registered"; then
-                echo "✅ $(basename $file) already on TestPyPI, skipping"
-                return 0
-              fi
-              echo "❌ Upload failed (attempt $i)"
-              [ "$i" -lt 3 ] && sleep 15
-            done
-            echo "❌ $(basename $file) failed after all retries"
-            return 1
-          }
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          nix develop --command uv venv /tmp/validate-env
 
-          for f in dist/*.whl dist/*.tar.gz; do
-            upload_file "$f" || exit 1
+          for i in 1 2 3 4 5; do
+            echo "Checking TestPyPI availability (attempt $i)"
+            if nix develop --command uv pip install \
+              --python /tmp/validate-env \
+              --index-url https://test.pypi.org/simple/ \
+              --extra-index-url https://pypi.org/simple/ \
+              --index-strategy unsafe-best-match \
+              uup-builder==$TAG_VERSION; then
+              nix develop --command uv run \
+                --python /tmp/validate-env \
+                python -c "import uup_builder; print('✅ Import successful')"
+              break
+            fi
+            if [ "$i" -lt 5 ]; then
+              echo "Not available yet, waiting 20s..."
+              sleep 20
+            else
+              echo "❌ Package never became available on TestPyPI"
+              exit 1
+            fi
           done
 
       - name: Validate TestPyPI install (wait until available)
