@@ -50,6 +50,7 @@ jobs:
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           nix develop --command uv venv --clear /tmp/validate-env
           
+
           for i in 1 2 3 4 5; do
             echo "Checking TestPyPI availability (attempt $i)"
             if nix develop --command uv pip install \
@@ -70,31 +71,6 @@ jobs:
             fi
           done
 
-      - name: Validate TestPyPI install (wait until available)
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          nix develop --command uv venv /tmp/validate-env
-
-          for i in 1 2 3 4 5; do
-            echo "Checking TestPyPI availability (attempt $i)"
-            if nix develop --command uv pip install \
-              --python /tmp/validate-env \
-              --index-url https://test.pypi.org/simple/ \
-              --extra-index-url https://pypi.org/simple/ \
-              uup-builder==$TAG_VERSION; then
-              nix develop --command uv run \
-                --python /tmp/validate-env \
-                python -c "import uup_builder; print('✅ Import successful')"
-              break
-            fi
-            if [ "$i" -lt 5 ]; then
-              echo "Not available yet, waiting 20s..."
-              sleep 20
-            else
-              echo "❌ Package never became available on TestPyPI"
-              exit 1
-            fi
-          done
 
       # -----------------------------------------------------------------------
       # Real PyPI — only reached if TestPyPI upload + validation passed
