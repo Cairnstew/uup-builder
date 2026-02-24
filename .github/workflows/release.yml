@@ -49,27 +49,32 @@ jobs:
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
         run: |
-          for i in 1 2 3; do
-            echo "Attempt $i to upload to TestPyPI"
-            output=$(nix develop --command uv publish \
-              --publish-url https://test.pypi.org/legacy/ 2>&1) && {
-              echo "✅ TestPyPI upload succeeded"
-              break
-            }
-            # Treat "already exists" as success so re-runs don't burn retries
-            if echo "$output" | grep -qi "already exists\|File already exists"; then
-              echo "✅ Already uploaded to TestPyPI, continuing"
-              break
-            fi
-            echo "❌ TestPyPI upload failed:"
-            echo "$output"
-            if [ "$i" -lt 3 ]; then
-              echo "Retrying in 15s..."
-              sleep 15
-            else
-              echo "❌ All TestPyPI upload attempts failed"
-              exit 1
-            fi
+          upload_file() {
+            local file=$1
+            for i in 1 2 3; do
+              echo "Attempt $i to upload $(basename $file) to TestPyPI"
+              output=$(nix develop --command uv publish \
+                --publish-url https://test.pypi.org/legacy/ \
+                "$file" 2>&1)
+              status=$?
+              echo "$output"
+              if [ $status -eq 0 ]; then
+                echo "✅ $(basename $file) uploaded"
+                return 0
+              fi
+              if echo "$output" | grep -qi "already exists\|File already exists\|already been registered"; then
+                echo "✅ $(basename $file) already on TestPyPI, skipping"
+                return 0
+              fi
+              echo "❌ Upload failed (attempt $i)"
+              [ "$i" -lt 3 ] && sleep 15
+            done
+            echo "❌ $(basename $file) failed after all retries"
+            return 1
+          }
+
+          for f in dist/*.whl dist/*.tar.gz; do
+            upload_file "$f" || exit 1
           done
 
       - name: Validate TestPyPI install (wait until available)
