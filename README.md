@@ -19,7 +19,6 @@ This tool is ideal for developers, system administrators, or enthusiasts who nee
 - Download UUP files with resume support, parallel downloads, and SHA-1 verification
 - Convert UUP files to bootable ISO images using the official `convert.sh` script
 - Support for compression types (WIM or ESD)
-- Automatic installation of required system dependencies (on supported platforms)
 - CI/CD friendly with GitHub Actions support
 - Rich terminal output (via `rich` library, optional)
 
@@ -36,7 +35,9 @@ The conversion step requires the following binaries:
 - `chntpw`
 - `genisoimage` or `mkisofs`
 
-These can be automatically installed on supported systems (Linux: apt, pacman, dnf, zypper; macOS: Homebrew). Run `uup-builder convert` and it will prompt to install if missing.
+Run `uup-builder convert` and it will prompt to install them if missing.
+
+Alternatively, the Nix build will include the required dependencies in the CLI.
 
 **Note:** Conversion is not supported on Windows; use Linux or macOS for ISO building.
 
@@ -60,10 +61,11 @@ uv sync
 ```
 
 ### Using Nix
-For reproducible environments:
+If Nix is installed:
 ```bash
-nix develop
+nix --extra-experimental-features 'nix-command flakes' run github:Cairnstew/uup-builder -- -h
 ```
+([Google Colab Example](https://colab.research.google.com/drive/1LK-aG2bzhLDo4HyMl2kjQ9VULPGwjtiY?usp=sharing))
 
 ## Usage
 
